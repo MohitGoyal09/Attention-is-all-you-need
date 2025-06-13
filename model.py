@@ -11,8 +11,10 @@ class InputEmbedding(nn.Module):
     """
     def __init__(self, d_model : int, vocab_size : int):
         super().__init__()
-        self.embedding = nn.Embedding(vocab_size, d_model)
+        self.vocab_size = vocab_size
         self.d_model = d_model
+        self.embedding = nn.Embedding(vocab_size, d_model)
+
     def forward(self, x):
         return self.embedding(x) * math.sqrt(self.d_model)
 
@@ -29,6 +31,7 @@ class PositionalEncoding(nn.Module):
         self.d_model = d_model
         self.seq_len = seq_len
         self.dropout = nn.Dropout(dropout)
+        # create a matrix of shape (seq_len, d_model)
         pe = torch.zeros(seq_len, d_model)
         # Create position vector of shape (seq_len, 1)
         position = torch.arange(0, seq_len, dtype=torch.float).unsqueeze(1)
@@ -39,10 +42,10 @@ class PositionalEncoding(nn.Module):
         pe[: , 0::2] = torch.sin(position * div_term)  # even indices
         pe[: , 1::2] = torch.cos(position * div_term)  # odd indices
         pe = pe.unsqueeze(0)  # Add batch dimension: (1, seq_len, d_model)
-        self.register_buffer('pe', pe)
+        self.register_buffer('pe', pe) # register the pe matrix as a buffer to the model not as a parameter
     
     def forward(self , x):
-        x = x + (self.pe[: , :x.shape[1] , : ]).requires_grad_(False)
+        x = x + (self.pe[: , :x.shape[1] , : ]).requires_grad_(False) # add the positional encoding to the input
         return self.dropout(x)
 
 class ResidualConnection(nn.Module):
@@ -52,13 +55,13 @@ class ResidualConnection(nn.Module):
         features (int): Number of features in the input
         dropout (float): Dropout probability
     """
-    def __init__(self , features : int , dropout : float) -> None:
-        super().__init__()
-        self.dropout = nn.Dropout(dropout)
-        self.norm = nn.LayerNorm(features)
+    def __init__(self, features: int, dropout: float) -> None:
+            super().__init__()
+            self.dropout = nn.Dropout(dropout)
+            self.norm = LayerNormalization(features)
     
-    def forward(self , x , sublayer):
-        return x + self.dropout(sublayer(self.norm(x)))
+    def forward(self, x, sublayer):
+            return x + self.dropout(sublayer(self.norm(x)))
 
 class LayerNormalization(nn.Module):
     """
@@ -122,17 +125,17 @@ class MultiHeadAttentionBlock(nn.Module):
         self.dropout = nn.Dropout(dropout)  # Dropout for regularization
 
     @staticmethod
-         def attention(query, key, value, mask , dropout : nn.Dropout):
-              d_k = query.shape[-1]
+    def attention(query, key, value, mask , dropout : nn.Dropout):
+            d_k = query.shape[-1]
               # Just apply formula from paper
-              attention_scores = (query @ key.transpose(-2 , -1)) / math.sqrt(d_k)  # (batch, n_heads, seq_len, seq_len)
-                if mask is not None:
+            attention_scores = (query @ key.transpose(-2 , -1)) / math.sqrt(d_k)  # (batch, n_heads, seq_len, seq_len)
+            if mask is not None:
                      # Write a very low value (indicating -inf) to the positions where mask == 0
-                     attention_scores = attention_scores.masked_fill(mask == 0 , -1e9)
-              attention_scores = torch.softmax(attention_scores , dim = -1)
-              if dropout is not None:
+                attention_scores = attention_scores.masked_fill(mask == 0 , -1e9)
+                attention_scores = torch.softmax(attention_scores , dim = -1)
+            if dropout is not None:
                    attention_scores = dropout(attention_scores)
-             return (attention_scores @ value) , attention_scores
+            return (attention_scores @ value) , attention_scores
 
     
     def forward(self , q, v, k , mask):
@@ -246,7 +249,7 @@ class Transformer(nn.Module):
         x = self.src_encoding(x)
         return self.encoder(x , src_mask)
 
-     def decode(self, encoder_output: torch.Tensor, src_mask: torch.Tensor, tgt: torch.Tensor, tgt_mask: torch.Tensor):
+    def decode(self, encoder_output: torch.Tensor, src_mask: torch.Tensor, tgt: torch.Tensor, tgt_mask: torch.Tensor):
         # (batch, seq_len, d_model)
         tgt = self.tgt_embed(tgt)
         tgt = self.tgt_pos(tgt)
